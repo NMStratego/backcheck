@@ -36,11 +36,21 @@ class BacklinkChecker:
         # Disabilita verifica SSL per considerare accessibili anche link con certificati non validi
         self.session.verify = False
         
-        retry_strategy = Retry(
-            total=3,
-            backoff_factor=0.3,
-            status_forcelist=[429, 500, 502, 503, 504],
-        )
+        # Strategia di retry più robusta per Railway
+        if os.environ.get('RAILWAY_ENVIRONMENT'):
+            retry_strategy = Retry(
+                total=5,  # Più tentativi su Railway
+                backoff_factor=0.5,
+                status_forcelist=[429, 500, 502, 503, 504],
+                connect=3,  # Retry per errori di connessione
+                read=3,     # Retry per errori di lettura
+            )
+        else:
+            retry_strategy = Retry(
+                total=3,
+                backoff_factor=0.3,
+                status_forcelist=[429, 500, 502, 503, 504],
+            )
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
             pool_connections=20,
@@ -88,14 +98,22 @@ class BacklinkChecker:
         redirect_chain = []
         
         try:
-            # Su Railway usa timeout ragionevole per mantenere accuratezza
-            actual_timeout = min(timeout, 8) if 'RAILWAY_ENVIRONMENT' in os.environ else timeout
+            # Su Railway usa timeout più generoso per evitare falsi negativi
+            if 'RAILWAY_ENVIRONMENT' in os.environ:
+                actual_timeout = 15  # Timeout più generoso su Railway
+            else:
+                actual_timeout = timeout
             
             # Prima richiesta HEAD per velocità
-            response = self.session.head(original_url, timeout=actual_timeout, allow_redirects=True)
-            
-            # Se HEAD fallisce, prova sempre GET per accuratezza
-            if response.status_code >= 400:
+            try:
+                response = self.session.head(original_url, timeout=actual_timeout, allow_redirects=True)
+                
+                # Se HEAD fallisce o restituisce errore, prova sempre GET
+                if response.status_code >= 400:
+                    response = self.session.get(original_url, timeout=actual_timeout, allow_redirects=True)
+                    
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                # Se HEAD fallisce completamente, prova direttamente GET
                 response = self.session.get(original_url, timeout=actual_timeout, allow_redirects=True)
             
             response_time = round(time.time() - start_time, 3)
@@ -184,16 +202,11 @@ class BacklinkChecker:
         index, url = url_data
         
         try:
-            print(f"[DEBUG] Starting check for URL: {url[:50]}... (row {index})")
-            
             result = self.check_url(url, timeout=timeout)
             result['row_index'] = index
-            
-            print(f"[DEBUG] Completed check for URL: {url[:50]}... Status: {result['status']}")
             return result
             
         except Exception as e:
-            print(f"[DEBUG] Error checking URL {url[:50]}...: {str(e)}")
             return {
                 'url': url,
                 'status': 'ERROR',

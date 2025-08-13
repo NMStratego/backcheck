@@ -83,11 +83,10 @@ def start_analysis():
     timeout = data.get('timeout', 10)
     backlink_column = data.get('backlink_column')
     
-    # Ottimizza per Railway mantenendo accuratezza
+    # Limita risorse su Railway
     if os.environ.get('RAILWAY_ENVIRONMENT'):
         max_workers = min(max_workers, 3)  # Massimo 3 worker su Railway
-        timeout = min(timeout, 8)  # Timeout ragionevole su Railway per accuratezza
-        print(f"[DEBUG] Railway environment detected, reducing workers to {max_workers} and timeout to {timeout}s")
+        timeout = max(timeout, 15)  # Timeout più generoso per Railway per evitare falsi negativi
     
     if not filepath or not os.path.exists(filepath):
         return jsonify({'error': 'File non trovato'}), 400
