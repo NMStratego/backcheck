@@ -194,15 +194,22 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
     global analysis_running, checker, stop_analysis, analysis_progress
     
     try:
+        print(f"[DEBUG] Starting analysis with filepath: {filepath}")
+        print(f"[DEBUG] max_workers: {max_workers}, timeout: {timeout}, column: {backlink_column}")
+        
         emit_log('🚀 Avvio analisi backlink...', 'info')
         emit_log(f'📁 File: {os.path.basename(filepath)}', 'info')
         emit_log(f'🚀 Thread paralleli: {max_workers}', 'info')
         emit_log(f'⏱️ Timeout: {timeout}s', 'info')
         
         # Leggi il CSV
+        print(f"[DEBUG] Reading CSV file: {filepath}")
         df = pd.read_csv(filepath)
+        print(f"[DEBUG] CSV loaded, shape: {df.shape}")
+        print(f"[DEBUG] Available columns: {list(df.columns)}")
         
         if not backlink_column or backlink_column not in df.columns:
+            print(f"[DEBUG] Invalid backlink column: {backlink_column}")
             emit_log('❌ Colonna backlink non valida', 'error')
             return
         
@@ -225,22 +232,34 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
             return
         
         # Crea il checker
-        checker = BacklinkChecker(filepath, max_workers)
-        checker.timeout = timeout
+        print(f"[DEBUG] Creating BacklinkChecker with {max_workers} workers")
+        try:
+            checker = BacklinkChecker(filepath, max_workers)
+            checker.timeout = timeout
+            print(f"[DEBUG] BacklinkChecker created successfully")
+        except Exception as e:
+            print(f"[DEBUG] Error creating BacklinkChecker: {str(e)}")
+            emit_log(f'❌ Errore nella creazione del checker: {str(e)}', 'error')
+            return
         
         # Prepara i dati per l'analisi
+        print(f"[DEBUG] Preparing URL data for analysis")
         url_data = [(index, str(row[backlink_column]).strip()) 
                    for index, row in df_with_backlinks.iterrows()]
+        print(f"[DEBUG] Prepared {len(url_data)} URLs for analysis")
         
         results = []
         completed = 0
         
         # Analizza gli URL in parallelo
+        print(f"[DEBUG] Starting ThreadPoolExecutor with {max_workers} workers")
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            print(f"[DEBUG] Submitting {len(url_data)} tasks to executor")
             future_to_url = {
                 executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
                 for data in url_data
             }
+            print(f"[DEBUG] All tasks submitted, waiting for completion")
             
             for future in as_completed(future_to_url):
                 if stop_analysis:
