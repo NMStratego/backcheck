@@ -246,4 +246,4 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
         stop_analysis = False
 
 if __name__ == '__main__':
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
