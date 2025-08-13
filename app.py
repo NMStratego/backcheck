@@ -83,6 +83,12 @@ def start_analysis():
     timeout = data.get('timeout', 10)
     backlink_column = data.get('backlink_column')
     
+    # Riduci drasticamente i worker per Railway per evitare sovraccarico
+    if os.environ.get('RAILWAY_ENVIRONMENT'):
+        max_workers = min(max_workers, 3)  # Massimo 3 worker su Railway
+        timeout = min(timeout, 5)  # Timeout più breve su Railway
+        print(f"[DEBUG] Railway environment detected, reducing workers to {max_workers} and timeout to {timeout}s")
+    
     if not filepath or not os.path.exists(filepath):
         return jsonify({'error': 'File non trovato'}), 400
     
@@ -251,37 +257,79 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
         results = []
         completed = 0
         
-        # Analizza gli URL in parallelo
+        # Analizza gli URL in parallelo con batch processing per Railway
         print(f"[DEBUG] Starting ThreadPoolExecutor with {max_workers} workers")
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            print(f"[DEBUG] Submitting {len(url_data)} tasks to executor")
-            future_to_url = {
-                executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
-                for data in url_data
-            }
-            print(f"[DEBUG] All tasks submitted, waiting for completion")
+        
+        # Su Railway, processa in batch per evitare sovraccarico
+        if os.environ.get('RAILWAY_ENVIRONMENT'):
+            batch_size = 50  # Processa 50 URL alla volta su Railway
+            print(f"[DEBUG] Railway environment: processing in batches of {batch_size}")
             
-            for future in as_completed(future_to_url):
+            for i in range(0, len(url_data), batch_size):
                 if stop_analysis:
-                    emit_log('⏹️ Analisi interrotta dall\'utente', 'warning')
                     break
+                    
+                batch = url_data[i:i+batch_size]
+                print(f"[DEBUG] Processing batch {i//batch_size + 1}: URLs {i+1}-{min(i+batch_size, len(url_data))}")
                 
-                try:
-                    result = future.result()
-                    results.append(result)
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_url = {
+                        executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
+                        for data in batch
+                    }
                     
-                    completed += 1
-                    progress = (completed / total_links) * 100
-                    
-                    # Emetti aggiornamento progresso
-                    emit_progress(completed, total_links, progress, result['url'], result['status'])
-                    
-                    # Log periodico
-                    if completed % 10 == 0 or completed == total_links:
-                        emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
+                    for future in as_completed(future_to_url):
+                        if stop_analysis:
+                            break
+                        
+                        try:
+                            result = future.result()
+                            results.append(result)
+                            
+                            completed += 1
+                            progress = (completed / total_links) * 100
+                            
+                            emit_progress(completed, total_links, progress, result['url'], result['status'])
+                            
+                            if completed % 10 == 0 or completed == total_links:
+                                emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
+                        
+                        except Exception as e:
+                            emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
                 
-                except Exception as e:
-                    emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
+                # Pausa tra i batch per non sovraccaricare Railway
+                if i + batch_size < len(url_data):
+                    time.sleep(1)
+                    
+        else:
+            # Ambiente locale: processa tutto insieme
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                print(f"[DEBUG] Submitting {len(url_data)} tasks to executor")
+                future_to_url = {
+                    executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
+                    for data in url_data
+                }
+                print(f"[DEBUG] All tasks submitted, waiting for completion")
+                 
+                 for future in as_completed(future_to_url):
+                     if stop_analysis:
+                         emit_log('⏹️ Analisi interrotta dall\'utente', 'warning')
+                         break
+                     
+                     try:
+                         result = future.result()
+                         results.append(result)
+                         
+                         completed += 1
+                         progress = (completed / total_links) * 100
+                         
+                         emit_progress(completed, total_links, progress, result['url'], result['status'])
+                         
+                         if completed % 10 == 0 or completed == total_links:
+                             emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
+                     
+                     except Exception as e:
+                         emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
         
         if not stop_analysis and results:
             # Genera il report
