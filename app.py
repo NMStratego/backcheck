@@ -247,4 +247,9 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
+    # Usa Flask standard per Railway deployment
+    if os.environ.get('RAILWAY_ENVIRONMENT'):
+        app.run(debug=False, host='0.0.0.0', port=port)
+    else:
+        # Usa SocketIO solo per sviluppo locale
+        socketio.run(app, debug=False, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True)
