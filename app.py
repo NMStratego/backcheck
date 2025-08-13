@@ -127,6 +127,7 @@ def get_logs():
 def get_progress():
     """Endpoint per ottenere il progresso dell'analisi (per Railway)"""
     global analysis_progress, analysis_running
+    print(f"[DEBUG] /get_progress called, returning: {analysis_progress}")
     return jsonify({
         'progress': analysis_progress,
         'running': analysis_running
@@ -173,6 +174,7 @@ def emit_progress(completed, total, percentage, current_url, status):
     
     # Aggiorna progresso per Railway
     analysis_progress = progress_data
+    print(f"[DEBUG] Progress data stored: {progress_data}")
     
     # Se SocketIO è disponibile (ambiente locale), usa anche quello
     if not os.environ.get('RAILWAY_ENVIRONMENT'):
@@ -298,6 +300,7 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                             progress = (completed / total_links) * 100
                             
                             emit_progress(completed, total_links, progress, result['url'], result['status'])
+                            print(f"[DEBUG] Progress update sent: {completed}/{total_links} ({progress:.1f}%) - URL: {result['url']}")
                             
                             if completed % 10 == 0 or completed == total_links:
                                 emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
