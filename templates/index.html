@@ -518,6 +518,9 @@
         let currentFilepath = '';
         let reportFilename = '';
         
+        // Rileva automaticamente se siamo su Railway
+        const isRailway = window.location.hostname.includes('railway.app') || window.location.hostname.includes('up.railway.app');
+        
         // Prova a inizializzare SocketIO
         try {
             socket = io();
@@ -528,18 +531,23 @@
             socket.on('connect_error', function() {
                 console.log('SocketIO non disponibile - modalità Railway con polling');
                 usePolling = true;
-                startPolling();
             });
         } catch (e) {
              console.log('SocketIO non disponibile - modalità Railway con polling');
              usePolling = true;
-             startPolling();
+         }
+         
+         // Forza polling su Railway
+         if (isRailway) {
+             console.log('Rilevato ambiente Railway - forzando modalità polling');
+             usePolling = true;
          }
          
          // Funzioni di polling per Railway
          function startPolling() {
              if (pollingInterval) return;
              
+             console.log('Avvio polling per aggiornamenti in tempo reale');
              pollingInterval = setInterval(() => {
                  // Polling dei log
                  fetch('/get_logs')
@@ -560,6 +568,7 @@
                          // Se l'analisi è completata
                          if (!data.running && document.getElementById('startBtn').disabled) {
                              handleAnalysisComplete();
+                             stopPolling();
                          }
                      })
                      .catch(console.error);
@@ -723,8 +732,9 @@
                     document.getElementById('progressSection').style.display = 'block';
                     document.getElementById('downloadSection').style.display = 'none';
                     
-                    // Avvia polling se necessario
+                    // Avvia polling se necessario (Railway) o resetta contatori
                     if (usePolling) {
+                        lastLogCount = 0; // Reset contatore log
                         startPolling();
                     }
                 } else {
