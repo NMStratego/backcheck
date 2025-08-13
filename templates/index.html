@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backlink Checker Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+            background: #fafbfc;
+            min-height: 100vh;
+            color: #172b4d;
+            line-height: 1.6;
+        }
+
+        /* Sidebar styles removed */
+
+        .main-container {
+            min-height: 100vh;
+            background: #f8fafc;
+            width: 100%;
+        }
+
+        .header {
+            background: #ffffff;
+            border-bottom: 1px solid #e1e5e9;
+            padding: 24px 48px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .header-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #172b4d;
+        }
+
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .main-content {
+            padding: 48px;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        .card {
+            background: #ffffff;
+            border: 1px solid #e1e5e9;
+            border-radius: 16px;
+            margin-bottom: 32px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            transition: box-shadow 0.2s ease;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .card-header {
+            padding: 20px 24px;
+            border-bottom: 1px solid #f4f5f7;
+            background: #fafbfc;
+        }
+
+        .card-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #172b4d;
+            margin-bottom: 4px;
+        }
+
+        .card-subtitle {
+            font-size: 14px;
+            color: #6b778c;
+        }
+
+        .card-content {
+            padding: 24px;
+        }
+
+        .upload-area {
+            border: 2px dashed #c1c7d0;
+            border-radius: 12px;
+            padding: 64px 32px;
+            text-align: center;
+            transition: all 0.2s ease;
+            cursor: pointer;
+            background: #fafbfc;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .upload-area:hover {
+            border-color: #2684ff;
+            background: #f4f8ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #0052cc;
+            background: #e9f2ff;
+        }
+
+        .upload-icon {
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 16px;
+            background: #f4f5f7;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6b778c;
+            font-size: 20px;
+        }
+
+        .upload-text {
+            font-size: 16px;
+            font-weight: 500;
+            color: #172b4d;
+            margin-bottom: 8px;
+        }
+
+        .upload-subtext {
+            font-size: 14px;
+            color: #6b778c;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: #172b4d;
+            margin-bottom: 6px;
+        }
+
+        .form-input {
+            padding: 10px 12px;
+            border: 2px solid #dfe1e6;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.15s ease;
+            background: #ffffff;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #2684ff;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            text-decoration: none;
+            min-height: 40px;
+        }
+
+        .btn-primary {
+            background: #0052cc;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #0747a6;
+        }
+
+        .btn-secondary {
+            background: #de350b;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #bf2600;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .progress-container {
+            margin-bottom: 8px;
+        }
+
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .progress-label {
+            font-size: 14px;
+            font-weight: 500;
+            color: #172b4d;
+        }
+
+        .progress-percentage {
+            font-size: 14px;
+            font-weight: 600;
+            color: #0052cc;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #f4f5f7;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0052cc 0%, #2684ff 100%);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .progress-text {
+            font-size: 12px;
+            color: #6b778c;
+            margin-top: 4px;
+        }
+
+        .log-container {
+            background: #f8f9fa;
+            border: 1px solid #dfe1e6;
+            border-radius: 6px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .log-header {
+            padding: 12px 16px;
+            background: #f4f5f7;
+            border-bottom: 1px solid #dfe1e6;
+            font-size: 14px;
+            font-weight: 600;
+            color: #172b4d;
+        }
+
+        .log-content {
+            padding: 16px;
+        }
+
+        .log-entry {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            font-size: 13px;
+            margin-bottom: 4px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+
+        .log-info {
+            color: #0052cc;
+            background: #e9f2ff;
+        }
+
+        .log-success {
+            color: #006644;
+            background: #e3fcef;
+        }
+
+        .log-error {
+            color: #de350b;
+            background: #ffebe6;
+        }
+
+        .log-warning {
+            color: #ff8b00;
+            background: #fff4e6;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 24px;
+        }
+
+        .stat-card {
+            background: #ffffff;
+            border: 1px solid #dfe1e6;
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #0052cc;
+            margin-bottom: 4px;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6b778c;
+            font-weight: 500;
+        }
+
+        .file-info {
+            background: #e3fcef;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+            border-left: 4px solid #006644;
+        }
+
+        .download-section {
+            display: none;
+            text-align: center;
+            padding: 24px;
+            background: #e3fcef;
+            border-radius: 8px;
+            border: 1px solid #006644;
+            margin-top: 24px;
+        }
+
+        @media (max-width: 1024px) {
+            .sidebar {
+                transform: translateX(-100%);
+                transition: transform 0.3s ease;
+            }
+
+            .main-container {
+                margin-left: 0;
+            }
+
+            .main-content {
+                padding: 32px;
+            }
+
+            .header {
+                padding: 24px 32px;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar removed for cleaner interface -->
+
+    <div class="main-container">
+        <div class="header" style="display: flex; justify-content: space-between; align-items: center; padding: 0 48px;">
+            <div style="flex: 1;"></div>
+            <div class="header-title" style="text-align: center; flex: 4;">Analisi Backlink</div>
+            <div class="header-actions" style="flex: 1; text-align: right;">
+                <span style="font-size: 14px; color: #0f5ff1e8;"><strong>Sviluppato da Nicolas Micolani</strong></span>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <!-- Upload Section -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Carica File CSV</div>
+                    <div class="card-subtitle">Seleziona il file contenente i backlink da analizzare</div>
+                </div>
+                <div class="card-content">
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">📄</div>
+                        <div class="upload-text">Trascina qui il tuo file CSV</div>
+                        <div class="upload-subtext">Formati supportati: .csv (max 10MB)</div>
+                        <br>
+                        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">Seleziona File</button>
+                        <input type="file" id="fileInput" class="file-input" accept=".csv">
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Info -->
+            <div id="fileInfo" class="file-info" style="display: none;"></div>
+
+            <!-- Configuration Section -->
+            <div id="configSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <div class="card-title">Configurazione Analisi</div>
+                    <div class="card-subtitle">Imposta i parametri per l'analisi dei backlink</div>
+                </div>
+                <div class="card-content">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label" for="backlink_column">Colonna Backlink:</label>
+                            <select id="backlink_column" class="form-input"></select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="max_workers">Thread Paralleli:</label>
+                            <input type="number" id="max_workers" class="form-input" value="10" min="1" max="50">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="timeout">Timeout (secondi):</label>
+                            <input type="number" id="timeout" class="form-input" value="10" min="5" max="60">
+                        </div>
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" id="startBtn" onclick="startAnalysis()">🚀 Avvia Analisi</button>
+                        <button class="btn btn-secondary" id="stopBtn" onclick="stopAnalysis()" disabled>⏹️ Ferma Analisi</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progressSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <div class="card-title">Progresso Analisi</div>
+                    <div class="card-subtitle">Monitoraggio in tempo reale dell'analisi</div>
+                </div>
+                <div class="card-content">
+                    <div class="progress-container">
+                        <div class="progress-header">
+                            <div class="progress-label">Avanzamento</div>
+                            <div class="progress-percentage" id="progressText">0%</div>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="progress-text" id="currentUrl"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div id="statsSection" class="card" style="display: none;">
+                <div class="card-header">
+                    <div class="card-title">Statistiche Analisi</div>
+                    <div class="card-subtitle">Riepilogo dei risultati ottenuti</div>
+                </div>
+                <div class="card-content">
+                    <div class="stats-grid" id="statsGrid"></div>
+                </div>
+            </div>
+
+            <!-- Download Section -->
+            <div id="downloadSection" class="download-section">
+                <h3>✅ Analisi Completata!</h3>
+                <p>Il report è stato generato con successo.</p>
+                <br>
+                <button class="btn btn-primary" id="downloadBtn">📥 Scarica Report</button>
+            </div>
+
+            <!-- Log Section -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">Log Analisi</div>
+                    <div class="card-subtitle">Monitoraggio dettagliato delle operazioni</div>
+                </div>
+                <div class="card-content">
+                    <div class="log-container">
+                        <div class="log-content" id="logContainer"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentFilepath = null;
+        let reportFilename = null;
+
+        // Upload handling
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        function handleFileUpload(file) {
+            if (!file.name.endsWith('.csv')) {
+                alert('Per favore seleziona un file CSV');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showFileInfo(data);
+                    setupConfiguration(data);
+                } else {
+                    alert('Errore: ' + data.error);
+                }
+            })
+            .catch(error => {
+                alert('Errore nel caricamento: ' + error);
+            });
+        }
+
+        function showFileInfo(data) {
+            const fileInfo = document.getElementById('fileInfo');
+            fileInfo.innerHTML = `
+                <strong>📁 File caricato:</strong> ${data.filename}<br>
+                <strong>📊 Righe totali:</strong> ${data.total_rows}<br>
+                <strong>📋 Colonne:</strong> ${data.columns.length}
+            `;
+            fileInfo.style.display = 'block';
+            currentFilepath = data.filepath;
+        }
+
+        function setupConfiguration(data) {
+            const columnSelect = document.getElementById('backlink_column');
+            columnSelect.innerHTML = '';
+            
+            data.columns.forEach(col => {
+                const option = document.createElement('option');
+                option.value = col;
+                option.textContent = col;
+                if (col === data.suggested_column) {
+                    option.selected = true;
+                }
+                columnSelect.appendChild(option);
+            });
+
+            document.getElementById('configSection').style.display = 'block';
+        }
+
+        function startAnalysis() {
+            const data = {
+                filepath: currentFilepath,
+                max_workers: parseInt(document.getElementById('max_workers').value),
+                timeout: parseInt(document.getElementById('timeout').value),
+                backlink_column: document.getElementById('backlink_column').value
+            };
+
+            fetch('/start_analysis', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('stopBtn').disabled = false;
+                    document.getElementById('progressSection').style.display = 'block';
+                    document.getElementById('downloadSection').style.display = 'none';
+                } else {
+                    alert('Errore: ' + result.error);
+                }
+            });
+        }
+
+        function stopAnalysis() {
+            fetch('/stop_analysis', {
+                method: 'POST'
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    addLog('⏹️ Richiesta di stop inviata...', 'warning');
+                }
+            });
+        }
+
+        // Socket events
+        socket.on('log', function(data) {
+            addLog(data.message, data.type);
+        });
+
+        socket.on('progress', function(data) {
+            updateProgress(data);
+        });
+
+        socket.on('analysis_complete', function(data) {
+            document.getElementById('startBtn').disabled = false;
+            document.getElementById('stopBtn').disabled = true;
+            reportFilename = data.report_filename;
+            
+            // Show statistics
+            showStatistics(data.statistics);
+            
+            // Show download section
+            document.getElementById('downloadSection').style.display = 'block';
+            document.getElementById('downloadBtn').onclick = () => {
+                window.location.href = `/download_report/${reportFilename}`;
+            };
+        });
+
+        function addLog(message, type = 'info') {
+            const logContainer = document.getElementById('logContainer');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logContainer.appendChild(logEntry);
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        function updateProgress(data) {
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const currentUrl = document.getElementById('currentUrl');
+            
+            progressFill.style.width = data.percentage + '%';
+            progressText.textContent = Math.round(data.percentage) + '%';
+            
+            if (data.current_url) {
+                currentUrl.textContent = 'Analizzando: ' + data.current_url;
+            }
+        }
+
+        function showStatistics(stats) {
+            const statsGrid = document.getElementById('statsGrid');
+            const statsSection = document.getElementById('statsSection');
+            
+            statsGrid.innerHTML = '';
+            
+            Object.entries(stats).forEach(([key, value]) => {
+                const statCard = document.createElement('div');
+                statCard.className = 'stat-card';
+                statCard.innerHTML = `
+                    <div class="stat-number">${value}</div>
+                    <div class="stat-label">${key.replace('_', ' ').toUpperCase()}</div>
+                `;
+                statsGrid.appendChild(statCard);
+            });
+            
+            statsSection.style.display = 'block';
+        }
+
+        // Initial log
+        addLog('🚀 Applicazione avviata. Carica un file CSV per iniziare.', 'info');
+    </script>
+</body>
+</html>
