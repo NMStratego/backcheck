@@ -261,9 +261,11 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
         print(f"[DEBUG] Starting ThreadPoolExecutor with {max_workers} workers")
         
         # Su Railway, processa in batch per evitare sovraccarico
+        print(f"[DEBUG] Checking if Railway environment: {os.environ.get('RAILWAY_ENVIRONMENT')}")
         if os.environ.get('RAILWAY_ENVIRONMENT'):
             batch_size = 50  # Processa 50 URL alla volta su Railway
             print(f"[DEBUG] Railway environment: processing in batches of {batch_size}")
+            print(f"[DEBUG] About to start batch processing loop for {len(url_data)} URLs")
             
             for i in range(0, len(url_data), batch_size):
                 if stop_analysis:
@@ -271,19 +273,25 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                     
                 batch = url_data[i:i+batch_size]
                 print(f"[DEBUG] Processing batch {i//batch_size + 1}: URLs {i+1}-{min(i+batch_size, len(url_data))}")
+                print(f"[DEBUG] Batch size: {len(batch)} URLs")
                 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    print(f"[DEBUG] Created ThreadPoolExecutor for batch {i//batch_size + 1}")
                     future_to_url = {
                         executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
                         for data in batch
                     }
+                    print(f"[DEBUG] Submitted {len(future_to_url)} tasks to executor for batch {i//batch_size + 1}")
+                    print(f"[DEBUG] Starting as_completed loop for batch {i//batch_size + 1}")
                     
                     for future in as_completed(future_to_url):
+                        print(f"[DEBUG] Processing future result in batch {i//batch_size + 1}")
                         if stop_analysis:
                             break
                         
                         try:
                             result = future.result()
+                            print(f"[DEBUG] Got result for URL: {result.get('url', 'unknown')} - Status: {result.get('status', 'unknown')}")
                             results.append(result)
                             
                             completed += 1
@@ -295,11 +303,17 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                                 emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
                         
                         except Exception as e:
+                            print(f"[DEBUG] Exception in as_completed loop: {str(e)}")
                             emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
+                
+                print(f"[DEBUG] Completed batch {i//batch_size + 1}, processed {len(batch)} URLs")
                 
                 # Pausa tra i batch per non sovraccaricare Railway
                 if i + batch_size < len(url_data):
+                    print(f"[DEBUG] Sleeping 1 second before next batch")
                     time.sleep(1)
+                else:
+                    print(f"[DEBUG] Last batch completed, no sleep needed")
                     
         else:
             # Ambiente locale: processa tutto insieme
