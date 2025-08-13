@@ -255,11 +255,11 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
         completed = 0
         
         # Analizza gli URL in parallelo con batch processing per Railway
-        print(f"[DEBUG] Starting URL analysis, Railway environment: {bool(os.environ.get('RAILWAY_ENVIRONMENT'))}")
+        print(f"Starting URL analysis, Railway environment: {bool(os.environ.get('RAILWAY_ENVIRONMENT'))}")
         
         if os.environ.get('RAILWAY_ENVIRONMENT'):
             batch_size = 50  # Processa 50 URL alla volta su Railway
-            print(f"[DEBUG] Using Railway batch processing with batch_size: {batch_size}")
+            print(f"Using Railway batch processing with batch_size: {batch_size}")
             
             for i in range(0, len(url_data), batch_size):
                 if stop_analysis:
@@ -267,15 +267,13 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                     break
                     
                 batch = url_data[i:i+batch_size]
-                print(f"[DEBUG] Processing batch {i//batch_size + 1}, URLs: {len(batch)}")
+                print(f"Processing batch {i//batch_size + 1}, URLs: {len(batch)}")
                 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    print(f"[DEBUG] Submitting {len(batch)} tasks to executor")
                     future_to_url = {
                         executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
                         for data in batch
                     }
-                    print(f"[DEBUG] All batch tasks submitted, waiting for completion")
                     
                     for future in as_completed(future_to_url):
                         if stop_analysis:
@@ -289,7 +287,8 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                             completed += 1
                             progress = (completed / total_links) * 100
                             
-                            print(f"[DEBUG] Completed URL {completed}/{total_links}: {result['url'][:50]} -> {result['status']}")
+                            if completed % 10 == 0:  # Log every 10th completion
+                                print(f"Completed {completed}/{total_links} URLs")
                             emit_progress(completed, total_links, progress, result['url'], result['status'])
                             
                             if completed % 10 == 0 or completed == total_links:
@@ -301,19 +300,17 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                 
                 # Pausa tra i batch per non sovraccaricare Railway
                 if i + batch_size < len(url_data):
-                    print(f"[DEBUG] Sleeping 1 second between batches")
+                    print(f"Sleeping 1 second between batches")
                     time.sleep(1)
                     
         else:
             # Ambiente locale: processa tutto insieme
-            print(f"[DEBUG] Using local processing for {len(url_data)} URLs")
+            print(f"Using local processing for {len(url_data)} URLs")
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                print(f"[DEBUG] Submitting {len(url_data)} tasks to executor")
                 future_to_url = {
                     executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
                     for data in url_data
                 }
-                print(f"[DEBUG] All tasks submitted, waiting for completion")
                 
                 for future in as_completed(future_to_url):
                     if stop_analysis:
@@ -328,7 +325,8 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                         completed += 1
                         progress = (completed / total_links) * 100
                         
-                        print(f"[DEBUG] Completed URL {completed}/{total_links}: {result['url'][:50]} -> {result['status']}")
+                        if completed % 10 == 0:  # Log every 10th completion
+                            print(f"Completed {completed}/{total_links} URLs")
                         emit_progress(completed, total_links, progress, result['url'], result['status'])
                         
                         if completed % 10 == 0 or completed == total_links:
