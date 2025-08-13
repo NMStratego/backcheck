@@ -73,7 +73,10 @@ class BacklinkChecker:
         """
         Controlla un singolo URL e restituisce informazioni dettagliate
         """
+        print(f"[DEBUG] check_url called for: {url}")
+        
         if not url or str(url).strip() == '' or str(url).lower() == 'nan':
+            print(f"[DEBUG] Invalid URL detected: {url}")
             return {
                 'url': url,
                 'status': 'INVALID',
@@ -93,7 +96,8 @@ class BacklinkChecker:
                 original_url = 'https://' + original_url
             else:
                 original_url = 'https://' + original_url
-            
+        
+        print(f"[DEBUG] Normalized URL: {original_url}")
         start_time = time.time()
         redirect_chain = []
         
@@ -104,17 +108,25 @@ class BacklinkChecker:
             else:
                 actual_timeout = timeout
             
+            print(f"[DEBUG] Making HTTP request to {original_url} with timeout {actual_timeout}s")
+            
             # Prima richiesta HEAD per velocità
             try:
+                print(f"[DEBUG] Trying HEAD request first")
                 response = self.session.head(original_url, timeout=actual_timeout, allow_redirects=True)
+                print(f"[DEBUG] HEAD request completed with status: {response.status_code}")
                 
                 # Se HEAD fallisce o restituisce errore, prova sempre GET
                 if response.status_code >= 400:
+                    print(f"[DEBUG] HEAD failed with {response.status_code}, trying GET")
                     response = self.session.get(original_url, timeout=actual_timeout, allow_redirects=True)
+                    print(f"[DEBUG] GET request completed with status: {response.status_code}")
                     
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
                 # Se HEAD fallisce completamente, prova direttamente GET
+                print(f"[DEBUG] HEAD request failed ({str(e)}), trying GET directly")
                 response = self.session.get(original_url, timeout=actual_timeout, allow_redirects=True)
+                print(f"[DEBUG] GET request completed with status: {response.status_code}")
             
             response_time = round(time.time() - start_time, 3)
             
@@ -202,11 +214,14 @@ class BacklinkChecker:
         index, url = url_data
         
         try:
+            print(f"[DEBUG] check_url_wrapper called for URL: {url[:50]}... (index: {index})")
             result = self.check_url(url, timeout=timeout)
             result['row_index'] = index
+            print(f"[DEBUG] check_url_wrapper completed for URL: {url[:50]}... -> {result['status']}")
             return result
             
         except Exception as e:
+            print(f"[DEBUG] check_url_wrapper error for URL: {url[:50]}... -> {str(e)}")
             return {
                 'url': url,
                 'status': 'ERROR',
