@@ -83,10 +83,10 @@ def start_analysis():
     timeout = data.get('timeout', 10)
     backlink_column = data.get('backlink_column')
     
-    # Riduci drasticamente i worker per Railway per evitare sovraccarico
+    # Ottimizza per Railway mantenendo accuratezza
     if os.environ.get('RAILWAY_ENVIRONMENT'):
         max_workers = min(max_workers, 3)  # Massimo 3 worker su Railway
-        timeout = min(timeout, 5)  # Timeout più breve su Railway
+        timeout = min(timeout, 8)  # Timeout ragionevole su Railway per accuratezza
         print(f"[DEBUG] Railway environment detected, reducing workers to {max_workers} and timeout to {timeout}s")
     
     if not filepath or not os.path.exists(filepath):
@@ -127,7 +127,6 @@ def get_logs():
 def get_progress():
     """Endpoint per ottenere il progresso dell'analisi (per Railway)"""
     global analysis_progress, analysis_running
-    print(f"[DEBUG] /get_progress called, returning: {analysis_progress}")
     return jsonify({
         'progress': analysis_progress,
         'running': analysis_running
@@ -174,7 +173,6 @@ def emit_progress(completed, total, percentage, current_url, status):
     
     # Aggiorna progresso per Railway
     analysis_progress = progress_data
-    print(f"[DEBUG] Progress data stored: {progress_data}")
     
     # Se SocketIO è disponibile (ambiente locale), usa anche quello
     if not os.environ.get('RAILWAY_ENVIRONMENT'):
@@ -251,72 +249,50 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
             return
         
         # Prepara i dati per l'analisi
-        print(f"[DEBUG] Preparing URL data for analysis")
         url_data = [(index, str(row[backlink_column]).strip()) 
                    for index, row in df_with_backlinks.iterrows()]
-        print(f"[DEBUG] Prepared {len(url_data)} URLs for analysis")
         
         results = []
         completed = 0
         
         # Analizza gli URL in parallelo con batch processing per Railway
-        print(f"[DEBUG] Starting ThreadPoolExecutor with {max_workers} workers")
-        
-        # Su Railway, processa in batch per evitare sovraccarico
-        print(f"[DEBUG] Checking if Railway environment: {os.environ.get('RAILWAY_ENVIRONMENT')}")
         if os.environ.get('RAILWAY_ENVIRONMENT'):
             batch_size = 50  # Processa 50 URL alla volta su Railway
-            print(f"[DEBUG] Railway environment: processing in batches of {batch_size}")
-            print(f"[DEBUG] About to start batch processing loop for {len(url_data)} URLs")
             
             for i in range(0, len(url_data), batch_size):
                 if stop_analysis:
                     break
                     
                 batch = url_data[i:i+batch_size]
-                print(f"[DEBUG] Processing batch {i//batch_size + 1}: URLs {i+1}-{min(i+batch_size, len(url_data))}")
-                print(f"[DEBUG] Batch size: {len(batch)} URLs")
                 
                 with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    print(f"[DEBUG] Created ThreadPoolExecutor for batch {i//batch_size + 1}")
                     future_to_url = {
                         executor.submit(checker.check_url_wrapper, data, timeout=timeout): data 
                         for data in batch
                     }
-                    print(f"[DEBUG] Submitted {len(future_to_url)} tasks to executor for batch {i//batch_size + 1}")
-                    print(f"[DEBUG] Starting as_completed loop for batch {i//batch_size + 1}")
                     
                     for future in as_completed(future_to_url):
-                        print(f"[DEBUG] Processing future result in batch {i//batch_size + 1}")
                         if stop_analysis:
                             break
                         
                         try:
                             result = future.result()
-                            print(f"[DEBUG] Got result for URL: {result.get('url', 'unknown')} - Status: {result.get('status', 'unknown')}")
                             results.append(result)
                             
                             completed += 1
                             progress = (completed / total_links) * 100
                             
                             emit_progress(completed, total_links, progress, result['url'], result['status'])
-                            print(f"[DEBUG] Progress update sent: {completed}/{total_links} ({progress:.1f}%) - URL: {result['url']}")
                             
                             if completed % 10 == 0 or completed == total_links:
                                 emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
                         
                         except Exception as e:
-                            print(f"[DEBUG] Exception in as_completed loop: {str(e)}")
                             emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
-                
-                print(f"[DEBUG] Completed batch {i//batch_size + 1}, processed {len(batch)} URLs")
                 
                 # Pausa tra i batch per non sovraccaricare Railway
                 if i + batch_size < len(url_data):
-                    print(f"[DEBUG] Sleeping 1 second before next batch")
                     time.sleep(1)
-                else:
-                    print(f"[DEBUG] Last batch completed, no sleep needed")
                     
         else:
             # Ambiente locale: processa tutto insieme

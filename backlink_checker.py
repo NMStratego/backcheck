@@ -88,16 +88,14 @@ class BacklinkChecker:
         redirect_chain = []
         
         try:
-            print(f"[DEBUG] Checking URL: {original_url[:50]}... with timeout {timeout}s")
-            
-            # Su Railway usa timeout più aggressivo
-            actual_timeout = min(timeout, 3) if 'RAILWAY_ENVIRONMENT' in os.environ else timeout
+            # Su Railway usa timeout ragionevole per mantenere accuratezza
+            actual_timeout = min(timeout, 8) if 'RAILWAY_ENVIRONMENT' in os.environ else timeout
             
             # Prima richiesta HEAD per velocità
             response = self.session.head(original_url, timeout=actual_timeout, allow_redirects=True)
             
-            # Se HEAD fallisce, prova GET (solo se non su Railway)
-            if response.status_code >= 400 and 'RAILWAY_ENVIRONMENT' not in os.environ:
+            # Se HEAD fallisce, prova sempre GET per accuratezza
+            if response.status_code >= 400:
                 response = self.session.get(original_url, timeout=actual_timeout, allow_redirects=True)
             
             response_time = round(time.time() - start_time, 3)
@@ -138,12 +136,9 @@ class BacklinkChecker:
                 'has_redirects': has_redirects
             }
             
-            print(f"[DEBUG] URL check completed: {status} ({response.status_code}) in {response_time:.2f}s")
-            
             return result
             
         except requests.exceptions.Timeout:
-            print(f"[DEBUG] URL timeout: {original_url[:50]}...")
             return {
                 'url': original_url,
                 'status': 'TIMEOUT',
@@ -157,7 +152,6 @@ class BacklinkChecker:
             }
             
         except requests.exceptions.ConnectionError:
-            print(f"[DEBUG] URL connection error: {original_url[:50]}...")
             return {
                 'url': original_url,
                 'status': 'CONNECTION_ERROR',
@@ -173,7 +167,6 @@ class BacklinkChecker:
         # Gli errori SSL sono ora gestiti automaticamente (verifica disabilitata)
             
         except Exception as e:
-            print(f"[DEBUG] URL error: {original_url[:50]}... - {str(e)}")
             return {
                 'url': original_url,
                 'status': 'ERROR',
