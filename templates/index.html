@@ -511,9 +511,105 @@
     </div>
 
     <script>
-        const socket = io();
-        let currentFilepath = null;
-        let reportFilename = null;
+        // Sistema ibrido: SocketIO per locale, HTTP polling per Railway
+        let socket = null;
+        let usePolling = false;
+        let pollingInterval = null;
+        let currentFilepath = '';
+        let reportFilename = '';
+        
+        // Prova a inizializzare SocketIO
+        try {
+            socket = io();
+            socket.on('connect', function() {
+                console.log('SocketIO connesso - modalità locale');
+                usePolling = false;
+            });
+            socket.on('connect_error', function() {
+                console.log('SocketIO non disponibile - modalità Railway con polling');
+                usePolling = true;
+                startPolling();
+            });
+        } catch (e) {
+             console.log('SocketIO non disponibile - modalità Railway con polling');
+             usePolling = true;
+             startPolling();
+         }
+         
+         // Funzioni di polling per Railway
+         function startPolling() {
+             if (pollingInterval) return;
+             
+             pollingInterval = setInterval(() => {
+                 // Polling dei log
+                 fetch('/get_logs')
+                     .then(response => response.json())
+                     .then(data => {
+                         updateLogsFromPolling(data.logs);
+                     })
+                     .catch(console.error);
+                 
+                 // Polling del progresso
+                 fetch('/get_progress')
+                     .then(response => response.json())
+                     .then(data => {
+                         if (data.progress && Object.keys(data.progress).length > 0) {
+                             updateProgress(data.progress);
+                         }
+                         
+                         // Se l'analisi è completata
+                         if (!data.running && document.getElementById('startBtn').disabled) {
+                             handleAnalysisComplete();
+                         }
+                     })
+                     .catch(console.error);
+             }, 1000); // Polling ogni secondo
+         }
+         
+         function stopPolling() {
+             if (pollingInterval) {
+                 clearInterval(pollingInterval);
+                 pollingInterval = null;
+             }
+         }
+         
+         let lastLogCount = 0;
+         function updateLogsFromPolling(logs) {
+             // Mostra solo i nuovi log
+             if (logs.length > lastLogCount) {
+                 for (let i = lastLogCount; i < logs.length; i++) {
+                     const log = logs[i];
+                     addLog(log.message, log.type);
+                 }
+                 lastLogCount = logs.length;
+             }
+         }
+         
+         function handleAnalysisComplete() {
+             document.getElementById('startBtn').disabled = false;
+             document.getElementById('stopBtn').disabled = true;
+             document.getElementById('downloadSection').style.display = 'block';
+             
+             // Cerca il nome del file nel log più recente
+             fetch('/get_logs')
+                 .then(response => response.json())
+                 .then(data => {
+                     const logs = data.logs;
+                     for (let i = logs.length - 1; i >= 0; i--) {
+                         const log = logs[i];
+                         if (log.message.includes('Report salvato:')) {
+                             const match = log.message.match(/backlink_report_\d+_\d+\.csv/);
+                             if (match) {
+                                 reportFilename = match[0];
+                                 document.getElementById('downloadBtn').onclick = () => {
+                                     window.location.href = `/download_report/${reportFilename}`;
+                                 };
+                                 break;
+                             }
+                         }
+                     }
+                 });
+         }
 
         // Upload handling
         const uploadArea = document.getElementById('uploadArea');
@@ -599,6 +695,12 @@
         }
 
         function startAnalysis() {
+            // Pulisci i log precedenti
+            if (usePolling) {
+                fetch('/clear_logs', { method: 'POST' });
+                lastLogCount = 0;
+            }
+            
             const data = {
                 filepath: currentFilepath,
                 max_workers: parseInt(document.getElementById('max_workers').value),
@@ -620,6 +722,11 @@
                     document.getElementById('stopBtn').disabled = false;
                     document.getElementById('progressSection').style.display = 'block';
                     document.getElementById('downloadSection').style.display = 'none';
+                    
+                    // Avvia polling se necessario
+                    if (usePolling) {
+                        startPolling();
+                    }
                 } else {
                     alert('Errore: ' + result.error);
                 }
@@ -634,33 +741,45 @@
             .then(result => {
                 if (result.success) {
                     addLog('⏹️ Richiesta di stop inviata...', 'warning');
+                    
+                    // Ferma polling se attivo
+                    if (usePolling) {
+                        stopPolling();
+                    }
                 }
             });
         }
 
-        // Socket events
-        socket.on('log', function(data) {
-            addLog(data.message, data.type);
-        });
+        // Socket events (solo se SocketIO è disponibile)
+        function setupSocketEvents() {
+            if (socket && !usePolling) {
+                socket.on('log', function(data) {
+                    addLog(data.message, data.type);
+                });
 
-        socket.on('progress', function(data) {
-            updateProgress(data);
-        });
+                socket.on('progress', function(data) {
+                    updateProgress(data);
+                });
 
-        socket.on('analysis_complete', function(data) {
-            document.getElementById('startBtn').disabled = false;
-            document.getElementById('stopBtn').disabled = true;
-            reportFilename = data.report_filename;
-            
-            // Show statistics
-            showStatistics(data.statistics);
-            
-            // Show download section
-            document.getElementById('downloadSection').style.display = 'block';
-            document.getElementById('downloadBtn').onclick = () => {
-                window.location.href = `/download_report/${reportFilename}`;
-            };
-        });
+                socket.on('analysis_complete', function(data) {
+                    document.getElementById('startBtn').disabled = false;
+                    document.getElementById('stopBtn').disabled = true;
+                    reportFilename = data.report_filename;
+                    
+                    // Show statistics
+                    showStatistics(data.statistics);
+                    
+                    // Show download section
+                    document.getElementById('downloadSection').style.display = 'block';
+                    document.getElementById('downloadBtn').onclick = () => {
+                        window.location.href = `/download_report/${reportFilename}`;
+                    };
+                });
+            }
+        }
+        
+        // Configura eventi dopo l'inizializzazione
+        setTimeout(setupSocketEvents, 100);
 
         function addLog(message, type = 'info') {
             const logContainer = document.getElementById('logContainer');

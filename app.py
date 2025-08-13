@@ -17,6 +17,8 @@ analysis_running = False
 analysis_thread = None
 checker = None
 stop_analysis = False
+analysis_logs = []
+analysis_progress = {}
 
 @app.route('/')
 def index():
@@ -109,23 +111,102 @@ def download_report(filename):
     except Exception as e:
         return jsonify({'error': f'Errore nel download: {str(e)}'}), 400
 
+@app.route('/get_logs')
+def get_logs():
+    """Endpoint per ottenere i log dell'analisi (per Railway)"""
+    global analysis_logs
+    return jsonify({'logs': analysis_logs})
+
+@app.route('/get_progress')
+def get_progress():
+    """Endpoint per ottenere il progresso dell'analisi (per Railway)"""
+    global analysis_progress, analysis_running
+    return jsonify({
+        'progress': analysis_progress,
+        'running': analysis_running
+    })
+
+@app.route('/clear_logs', methods=['POST'])
+def clear_logs():
+    """Endpoint per pulire i log (per Railway)"""
+    global analysis_logs
+    analysis_logs = []
+    return jsonify({'success': True})
+
+def emit_log(message, log_type='info'):
+    """Funzione universale per logging che funziona sia con SocketIO che senza"""
+    global analysis_logs
+    
+    log_entry = {
+        'message': message,
+        'type': log_type,
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    # Aggiungi ai log per Railway
+    analysis_logs.append(log_entry)
+    
+    # Se SocketIO è disponibile (ambiente locale), usa anche quello
+    if not os.environ.get('RAILWAY_ENVIRONMENT'):
+        try:
+            socketio.emit('log', log_entry)
+        except:
+            pass  # Ignora errori SocketIO su Railway
+
+def emit_progress(completed, total, percentage, current_url, status):
+    """Funzione universale per aggiornamenti di progresso"""
+    global analysis_progress
+    
+    progress_data = {
+        'completed': completed,
+        'total': total,
+        'percentage': round(percentage, 1),
+        'current_url': current_url,
+        'status': status
+    }
+    
+    # Aggiorna progresso per Railway
+    analysis_progress = progress_data
+    
+    # Se SocketIO è disponibile (ambiente locale), usa anche quello
+    if not os.environ.get('RAILWAY_ENVIRONMENT'):
+        try:
+            socketio.emit('progress', progress_data)
+        except:
+            pass  # Ignora errori SocketIO su Railway
+
+def emit_analysis_complete(report_filename, total_analyzed, statistics):
+    """Funzione universale per completamento analisi"""
+    complete_data = {
+        'report_filename': report_filename,
+        'total_analyzed': total_analyzed,
+        'statistics': statistics
+    }
+    
+    # Se SocketIO è disponibile (ambiente locale), usa anche quello
+    if not os.environ.get('RAILWAY_ENVIRONMENT'):
+        try:
+            socketio.emit('analysis_complete', complete_data)
+        except:
+            pass  # Ignora errori SocketIO su Railway
+
 def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
-    global analysis_running, checker, stop_analysis
+    global analysis_running, checker, stop_analysis, analysis_progress
     
     try:
-        socketio.emit('log', {'message': '🚀 Avvio analisi backlink...', 'type': 'info'})
-        socketio.emit('log', {'message': f'📁 File: {os.path.basename(filepath)}', 'type': 'info'})
-        socketio.emit('log', {'message': f'🚀 Thread paralleli: {max_workers}', 'type': 'info'})
-        socketio.emit('log', {'message': f'⏱️ Timeout: {timeout}s', 'type': 'info'})
+        emit_log('🚀 Avvio analisi backlink...', 'info')
+        emit_log(f'📁 File: {os.path.basename(filepath)}', 'info')
+        emit_log(f'🚀 Thread paralleli: {max_workers}', 'info')
+        emit_log(f'⏱️ Timeout: {timeout}s', 'info')
         
         # Leggi il CSV
         df = pd.read_csv(filepath)
         
         if not backlink_column or backlink_column not in df.columns:
-            socketio.emit('log', {'message': '❌ Colonna backlink non valida', 'type': 'error'})
+            emit_log('❌ Colonna backlink non valida', 'error')
             return
         
-        socketio.emit('log', {'message': f'✅ Colonna backlink: {backlink_column}', 'type': 'success'})
+        emit_log(f'✅ Colonna backlink: {backlink_column}', 'success')
         
         # Filtra backlink validi
         df[backlink_column] = df[backlink_column].astype(str).str.strip()
@@ -137,10 +218,10 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
         ]
         
         total_links = len(df_with_backlinks)
-        socketio.emit('log', {'message': f'🔍 Trovati {total_links} backlink da controllare', 'type': 'info'})
+        emit_log(f'🔍 Trovati {total_links} backlink da controllare', 'info')
         
         if total_links == 0:
-            socketio.emit('log', {'message': '❌ Nessun backlink valido trovato!', 'type': 'error'})
+            emit_log('❌ Nessun backlink valido trovato!', 'error')
             return
         
         # Crea il checker
@@ -163,7 +244,7 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
             
             for future in as_completed(future_to_url):
                 if stop_analysis:
-                    socketio.emit('log', {'message': '⏹️ Analisi interrotta dall\'utente', 'type': 'warning'})
+                    emit_log('⏹️ Analisi interrotta dall\'utente', 'warning')
                     break
                 
                 try:
@@ -174,30 +255,18 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                     progress = (completed / total_links) * 100
                     
                     # Emetti aggiornamento progresso
-                    socketio.emit('progress', {
-                        'completed': completed,
-                        'total': total_links,
-                        'percentage': round(progress, 1),
-                        'current_url': result['url'],
-                        'status': result['status']
-                    })
+                    emit_progress(completed, total_links, progress, result['url'], result['status'])
                     
                     # Log periodico
                     if completed % 10 == 0 or completed == total_links:
-                        socketio.emit('log', {
-                            'message': f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)',
-                            'type': 'info'
-                        })
+                        emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
                 
                 except Exception as e:
-                    socketio.emit('log', {
-                        'message': f'❌ Errore nell\'analisi: {str(e)}',
-                        'type': 'error'
-                    })
+                    emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
         
         if not stop_analysis and results:
             # Genera il report
-            socketio.emit('log', {'message': '📝 Generazione report...', 'type': 'info'})
+            emit_log('📝 Generazione report...', 'info')
             
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             report_filename = f'backlink_report_{timestamp}.csv'
@@ -224,22 +293,12 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
             # Statistiche finali
             status_counts = report_df['Status'].value_counts().to_dict()
             
-            socketio.emit('analysis_complete', {
-                'report_filename': report_filename,
-                'total_analyzed': len(results),
-                'statistics': status_counts
-            })
+            emit_analysis_complete(report_filename, len(results), status_counts)
             
-            socketio.emit('log', {
-                'message': f'✅ Analisi completata! Report salvato: {report_filename}',
-                'type': 'success'
-            })
+            emit_log(f'✅ Analisi completata! Report salvato: {report_filename}', 'success')
         
     except Exception as e:
-        socketio.emit('log', {
-            'message': f'❌ Errore critico: {str(e)}',
-            'type': 'error'
-        })
+        emit_log(f'❌ Errore critico: {str(e)}', 'error')
     
     finally:
         analysis_running = False
