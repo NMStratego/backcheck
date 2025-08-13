@@ -310,26 +310,26 @@ def run_backlink_analysis(filepath, max_workers, timeout, backlink_column):
                     for data in url_data
                 }
                 print(f"[DEBUG] All tasks submitted, waiting for completion")
-                 
-                 for future in as_completed(future_to_url):
-                     if stop_analysis:
-                         emit_log('⏹️ Analisi interrotta dall\'utente', 'warning')
-                         break
-                     
-                     try:
-                         result = future.result()
-                         results.append(result)
-                         
-                         completed += 1
-                         progress = (completed / total_links) * 100
-                         
-                         emit_progress(completed, total_links, progress, result['url'], result['status'])
-                         
-                         if completed % 10 == 0 or completed == total_links:
-                             emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
-                     
-                     except Exception as e:
-                         emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
+                
+                for future in as_completed(future_to_url):
+                    if stop_analysis:
+                        emit_log('⏹️ Analisi interrotta dall\'utente', 'warning')
+                        break
+                    
+                    try:
+                        result = future.result()
+                        results.append(result)
+                        
+                        completed += 1
+                        progress = (completed / total_links) * 100
+                        
+                        emit_progress(completed, total_links, progress, result['url'], result['status'])
+                        
+                        if completed % 10 == 0 or completed == total_links:
+                            emit_log(f'📊 Progresso: {completed}/{total_links} ({progress:.1f}%)', 'info')
+                    
+                    except Exception as e:
+                        emit_log(f'❌ Errore nell\'analisi: {str(e)}', 'error')
         
         if not stop_analysis and results:
             # Genera il report
