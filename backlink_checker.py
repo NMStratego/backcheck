@@ -88,12 +88,17 @@ class BacklinkChecker:
         redirect_chain = []
         
         try:
-            # Prima richiesta HEAD per velocità
-            response = self.session.head(original_url, timeout=timeout, allow_redirects=True)
+            print(f"[DEBUG] Checking URL: {original_url[:50]}... with timeout {timeout}s")
             
-            # Se HEAD fallisce, prova GET
-            if response.status_code >= 400:
-                response = self.session.get(original_url, timeout=timeout, allow_redirects=True)
+            # Su Railway usa timeout più aggressivo
+            actual_timeout = min(timeout, 3) if 'RAILWAY_ENVIRONMENT' in os.environ else timeout
+            
+            # Prima richiesta HEAD per velocità
+            response = self.session.head(original_url, timeout=actual_timeout, allow_redirects=True)
+            
+            # Se HEAD fallisce, prova GET (solo se non su Railway)
+            if response.status_code >= 400 and 'RAILWAY_ENVIRONMENT' not in os.environ:
+                response = self.session.get(original_url, timeout=actual_timeout, allow_redirects=True)
             
             response_time = round(time.time() - start_time, 3)
             
@@ -133,9 +138,12 @@ class BacklinkChecker:
                 'has_redirects': has_redirects
             }
             
+            print(f"[DEBUG] URL check completed: {status} ({response.status_code}) in {response_time:.2f}s")
+            
             return result
             
         except requests.exceptions.Timeout:
+            print(f"[DEBUG] URL timeout: {original_url[:50]}...")
             return {
                 'url': original_url,
                 'status': 'TIMEOUT',
@@ -149,6 +157,7 @@ class BacklinkChecker:
             }
             
         except requests.exceptions.ConnectionError:
+            print(f"[DEBUG] URL connection error: {original_url[:50]}...")
             return {
                 'url': original_url,
                 'status': 'CONNECTION_ERROR',
@@ -164,6 +173,7 @@ class BacklinkChecker:
         # Gli errori SSL sono ora gestiti automaticamente (verifica disabilitata)
             
         except Exception as e:
+            print(f"[DEBUG] URL error: {original_url[:50]}... - {str(e)}")
             return {
                 'url': original_url,
                 'status': 'ERROR',
@@ -179,9 +189,30 @@ class BacklinkChecker:
     def check_url_wrapper(self, url_data, timeout=8):
         """Wrapper per il controllo URL con threading"""
         index, url = url_data
-        result = self.check_url(url, timeout=timeout)
-        result['row_index'] = index
-        return result
+        
+        try:
+            print(f"[DEBUG] Starting check for URL: {url[:50]}... (row {index})")
+            
+            result = self.check_url(url, timeout=timeout)
+            result['row_index'] = index
+            
+            print(f"[DEBUG] Completed check for URL: {url[:50]}... Status: {result['status']}")
+            return result
+            
+        except Exception as e:
+            print(f"[DEBUG] Error checking URL {url[:50]}...: {str(e)}")
+            return {
+                'url': url,
+                'status': 'ERROR',
+                'status_code': None,
+                'redirect_chain': [],
+                'final_url': url,
+                'error': str(e),
+                'response_time': 0,
+                'redirect_count': 0,
+                'has_redirects': False,
+                'row_index': index
+            }
     
     def process_csv(self):
         """
